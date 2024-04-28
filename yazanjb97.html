@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Games Playing Reason</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.0.2/dist/tfjs-vis.umd.min.js"></script>
+    <script src="https://unpkg.com/papaparse@5"></script>
+</head>
+<body>
+    <script>
+        // Load your CSV dataset
+        Papa.parse('VideoGameUsage_Profile.csv', {
+            download: true,
+            header: true,
+            complete: function(results) {
+                let df = results.data;
+
+                // Remove the 'most_played_game' column
+                df = df.map(({ most_played_game, ...rest }) => rest);
+
+                // Convert 'Age' column to numeric
+                df = df.map(obj => ({ ...obj, Age: Number(obj.Age) }));
+
+
+                // Encoding categorical data to numeric
+                let genderEncoder = new Map([...new Set(df.map(obj => obj.Gender))].map((x, i) => [x, i]));
+                let studentEncoder = new Map([...new Set(df.map(obj => obj.student))].map((x, i) => [x, i]));
+                let gameEncoder = new Map([...new Set(df.map(obj => obj.favorite_game))].map((x, i) => [x, i]));
+                let reasonOfPlayEncoder = new Map([...new Set(df.map(obj => obj.reason_of_play_game))].map((x, i) => [x, i]));
+
+                df = df.map(obj => ({
+                    ...obj,
+                    Gender: genderEncoder.get(obj.Gender),
+                    student: studentEncoder.get(obj.student),
+                    favorite_game: gameEncoder.get(obj.favorite_game),
+                    reason_of_play_game: reasonOfPlayEncoder.get(obj.reason_of_play_game)
+                }));
+
+                // Define your label column
+                let playVideoGameMap = { 'Yes': 0, 'No': 1, 'sometimes': 2 };
+                let labels = df.map(obj => playVideoGameMap[obj.play_video_game]);
+
+                // Convert labels to one-hot encoding
+                labels = tf.oneHot(tf.tensor1d(labels, 'int32'), 3);
+
+                // Drop the label column from the original dataframe
+                df = df.map(({ play_video_game, ...rest }) => rest);
+                console.log(df)
+
+                // Convert the dataframe to a tensor
+                let data = tf.tensor2d(df.map(Object.values));
+
+                // Define your model
+                const model = tf.sequential();
+                model.add(tf.layers.dense({ units: 32, activation: 'relu', inputShape: [data.shape[1]] }));
+                model.add(tf.layers.dense({ units: 3, activation: 'softmax' }));
+
+                // Compile your model
+                model.compile({ loss: 'categoricalCrossentropy', optimizer: tf.train.adam(0.01), metrics: ['accuracy'] });
+
+                // Display model summary
+                tfvis.show.modelSummary({name: 'Model Summary'}, model);
+
+                const metrics = ['loss', 'acc'];
+                const container = {
+                    name: 'Model Training', tab: 'Model', styles: { height: '1000px' }
+                 };
+                
+                const fitCallbacks = tfvis.show.fitCallbacks(container, metrics);
+
+                // Fit your model
+                model.fit(data, labels, { 
+                    epochs: 10,
+                    callbacks: fitCallbacks// {
+                    //     onEpochEnd: async (epoch, logs) => {
+                    //         console.log(`Epoch ${epoch}: loss = ${logs.loss}, accuracy = ${logs.acc}`);
+                    //     }
+                    // }
+                }).then(() => {
+                    // Evaluate your model
+                    const evaluation = model.evaluate(data, labels);
+                    console.log(`Evaluation result: loss = ${evaluation[0]}, accuracy = ${evaluation[1]}`);
+                    // evaluation[0].print(); // Print loss
+                    // evaluation[1].print(); // Print accuracy
+
+                    // Visualize evaluation result
+                    const evalContainer = {
+                        name: 'Evaluation Result', tab: 'Evaluation', styles: { height: '1000px' }
+                    };
+
+                    // Convert 0D tensors to 1D
+                    const loss = evaluation[0].expandDims();
+                    const accuracy = evaluation[1].expandDims();
+
+                    
+                    // tfvis.show.valuesDistribution(evalContainer, accuracy, 'Accuracy');
+                    // tfvis.show.valuesDistribution(evalContainer, loss, 'Loss');
+
+                    // // Perform prediction on data
+                    // const predictions = model.predict(data);
+
+                    // // Convert predictions and labels to 1D array
+                    // const predArray = tf.argMax(predictions, axis=1).arraySync();
+                    // const labelArray = tf.argMax(labels, axis=1).arraySync();
+
+                    // // Define confusion matrix
+                    // let confusionMatrix = Array.from({ length: 3 }, () => Array(3).fill(0));
+                    // for (let i = 0; i < labelArray.length; i++) {
+                    //     confusionMatrix[labelArray[i]][predArray[i]]++;
+                    //   }
+                    // // Plot confusion matrix
+                    // const data1 = { values: confusionMatrix };
+
+                    // tfvis.render.confusionMatrix(
+                    //     { name: 'Confusion Matrix', tab: 'Evaluation' },
+                    //     data1,
+                    //     { shadeDiagonal: true }
+                    //   );
+                    
+
+                    
+                });
+            }
+        });
+    </script>
+</body>
+</html>
